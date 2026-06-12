@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Rast - Rastreo de Dispositivos - Prototipo V3</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: { emerald: { 500: '#10B981', 600: '#059669' }, slate: { 50: '#F8FAFC', 100: '#F1F5F9' } }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <style>
+        html, body { height: 100%; overflow: hidden; }
+        ::-webkit-scrollbar { width: 0px; background: transparent; }
+        
+        .tab-content-section { display: none !important; opacity: 0; transition: opacity 0.3s ease-in-out; }
+        .tab-content-section.active-tab { display: flex !important; opacity: 1; }
+        .leaflet-container { z-index: 1; }
+        .nav-link-active-mobile { color: #10B981 !important; }
+        .nav-link-active-desktop { background-color: #ECFDF5 !important; color: #10B981 !important; border-right: 4px solid #10B981; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans h-full w-full flex flex-col selection:bg-emerald-500/20 selection:text-emerald-900">
+
+    <div id="loginScreen" class="fixed inset-0 bg-white z-[100] flex flex-col justify-center items-center p-6 transition-opacity duration-500 overflow-y-auto">
+        <div class="w-full max-w-md bg-white p-8 rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 text-center my-auto">
+            <img src="https://i.imgur.com/fa9m9Qw.png" referrerpolicy="no-referrer" alt="Rast Logo" class="h-16 mx-auto mb-4">
+            <h1 class="text-2xl font-bold text-slate-800 mb-2">Bienvenido a Rast</h1>
+            <p class="text-slate-500 mb-6 text-sm">Registra este dispositivo para comenzar.</p>
+            
+            <form id="loginForm" class="space-y-4 text-left">
+                <div>
+                    <label class="block text-sm font-medium text-slate-700 mb-1">Correo Electrónico</label>
+                    <input type="email" id="loginEmail" required placeholder="ejemplo@correo.com" class="w-full px-4 py-3 rounded-lg border border-slate-200 focus:ring-2 focus:ring-emerald-500 bg-slate-50">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-slate-700 mb-1">Teléfono (10 dígitos)</label>
+                    <input type="tel" id="loginPhone" required pattern="[0-9]{10}" maxlength="10" placeholder="Ej: 3481234567" class="w-full px-4 py-3 rounded-lg border border-slate-200 focus:ring-2 focus:ring-emerald-500 bg-slate-50">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-slate-700 mb-1">Nombre de este dispositivo</label>
+                    <input type="text" id="loginDeviceName" required placeholder="Ej: Mi iPhone 13" class="w-full px-4 py-3 rounded-lg border border-slate-200 focus:ring-2 focus:ring-emerald-500 bg-slate-50">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-slate-700 mb-1">Sistema Operativo</label>
+                    <select id="osSelector" required class="w-full px-4 py-3 rounded-lg border border-slate-200 focus:ring-2 focus:ring-emerald-500 bg-slate-50">
+                        <option value="detectando" disabled>Selecciona uno...</option>
+                        <option value="iOS">iOS</option>
+                        <option value="Android">Android</option>
+                        <option value="Windows">Windows</option>
+                        <option value="macOS">macOS</option>
+                        <option value="Linux">Linux</option>
+                    </select>
+                </div>
+                <button type="submit" class="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-semibold py-3 px-4 rounded-lg transition-all mt-4 flex justify-center items-center">
+                    Ingresar <i class="fa-solid fa-arrow-right ml-2"></i>
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <div id="appContainer" class="hidden flex-1 flex h-full w-full relative">
+        
+        <aside class="hidden lg:flex flex-col w-72 bg-white border-r border-slate-100 h-full z-20">
+            <div class="p-6 flex items-center justify-center border-b border-slate-50 h-16">
+                <img src="https://i.imgur.com/fa9m9Qw.png" referrerpolicy="no-referrer" alt="Logo" class="h-8">
+                <span class="ml-3 text-xl font-bold text-slate-800">Rast</span>
+            </div>
+            <nav class="flex-1 p-3 space-y-1 overflow-y-auto pt-4">
+                <button onclick="switchTab('devices-tab')" id="desk-devices-tab" class="desktop-nav-link w-full flex items-center p-3.5 rounded-lg text-emerald-600 font-semibold transition-all">
+                    <i class="fa-solid fa-map-location-dot w-6 text-center text-lg mr-3"></i> <span>Mis Dispositivos</span>
+                </button>
+                <button onclick="switchTab('profile-tab')" id="desk-profile-tab" class="desktop-nav-link w-full flex items-center p-3.5 rounded-lg text-slate-600 hover:bg-slate-50 transition-all">
+                    <i class="fa-solid fa-user w-6 text-center text-lg mr-3"></i> <span>Perfil</span>
+                </button>
+                <button onclick="switchTab('updates-tab')" id="desk-updates-tab" class="desktop-nav-link w-full flex items-center p-3.5 rounded-lg text-slate-600 hover:bg-slate-50 transition-all">
+                    <i class="fa-solid fa-bell w-6 text-center text-lg mr-3"></i> <span>Actualizaciones</span>
+                </button>
+                <button onclick="switchTab('settings-tab')" id="desk-settings-tab" class="desktop-nav-link w-full flex items-center p-3.5 rounded-lg text-slate-600 hover:bg-slate-50 transition-all">
+                    <i class="fa-solid fa-gear w-6 text-center text-lg mr-3"></i> <span>Configuración</span>
+                </button>
+            </nav>
+        </aside>
+
+        <main class="flex-1 flex flex-col h-full relative overflow-hidden bg-slate-50/50">
+            
+            <header class="bg-white border-b border-slate-100 h-16 flex items-center justify-between px-4 lg:px-8 z-20 sticky top-0">
+                <div class="flex items-center">
+                    <button onclick="toggleDrawer()" class="p-2 -ml-2 text-slate-500 hover:text-emerald-600 lg:hidden rounded-full"><i class="fa-solid fa-bars text-2xl"></i></button>
+                    <h2 id="headerTitle" class="hidden lg:block ml-2 text-xl font-bold text-slate-900">Mis Dispositivos</h2>
+                </div>
+                <div class="lg:hidden absolute left-1/2 transform -translate-x-1/2 flex items-center">
+                    <img src="https://i.imgur.com/fa9m9Qw.png" referrerpolicy="no-referrer" alt="Logo" class="h-8">
+                </div>
+                <div class="flex items-center space-x-3 cursor-pointer p-1 rounded-full hover:bg-slate-50" onclick="toggleDrawer()">
+                    <div class="text-right hidden lg:block">
+                        <p class="text-sm font-semibold text-slate-800" id="headerName">Usuario</p>
+                        <p class="text-xs text-emerald-500">v1.2.0 Prototipo</p>
+                    </div>
+                    <img src="https://i.imgur.com/XQ4D5Ta.png" referrerpolicy="no-referrer" alt="Avatar" class="user-avatar h-10 w-10 rounded-full object-cover border-2 border-white shadow-sm ring-1 ring-emerald-100">
+                </div>
+            </header>
+
+            <div class="flex-1 overflow-y-auto overflow-x-hidden relative" id="mainScrollArea">
+                
+                <section id="devices-tab" class="tab-content-section h-full flex flex-col pt-0 active-tab">
+                    <div class="relative w-full h-[45vh] lg:h-[50vh] border-b border-slate-100 bg-slate-100 z-10">
+                        <div id="map" class="w-full h-full"></div>
+                    </div>
+                    
+                    <div class="flex-1 p-4 lg:p-8 bg-slate-50 overflow-y-auto pb-24 lg:pb-8">
+                        <div class="flex justify-between items-center mb-6">
+                            <h3 class="text-lg font-bold text-slate-900">Estado de la Flota</h3>
+                            <div class="flex space-x-3">
+                                <span class="text-sm bg-emerald-50 text-emerald-700 px-3 py-1.5 rounded-full font-semibold border border-emerald-100" id="deviceCountBadge">0 Activos</span>
+                                <button onclick="openManualDeviceModal()" class="text-sm bg-white hover:bg-emerald-50 text-emerald-600 px-3 py-1.5 rounded-full font-semibold border border-emerald-200 transition-colors shadow-sm hidden md:flex items-center">
+                                    <i class="fa-solid fa-plus mr-1.5"></i> Personalizado
+                                </button>
+                            </div>
+                        </div>
+                        <div id="devicesList" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"></div>
+                    </div>
+
+                    <div class="fixed bottom-24 lg:bottom-10 right-6 z-20 group">
+                        <div class="absolute bottom-full right-0 mb-4 flex-col items-end space-y-3 hidden group-hover:flex">
+                            <button onclick="openManualDeviceModal()" class="bg-white text-emerald-600 border border-emerald-100 shadow-lg px-4 py-2 rounded-full font-semibold flex items-center hover:bg-emerald-50 transition-all whitespace-nowrap">
+                                <i class="fa-solid fa-pen-to-square mr-2"></i> Añadir Manual
+                            </button>
+                            <button onclick="openScannerModal()" class="bg-white text-emerald-600 border border-emerald-100 shadow-lg px-4 py-2 rounded-full font-semibold flex items-center hover:bg-emerald-50 transition-all whitespace-nowrap">
+                                <i class="fa-solid fa-wifi mr-2"></i> Escanear Red
+                            </button>
+                        </div>
+                        <button class="bg-emerald-500 hover:bg-emerald-600 text-white w-14 h-14 lg:w-16 lg:h-16 rounded-full flex items-center justify-center shadow-[0_10px_25px_rgba(16,185,129,0.4)] transition-all">
+                            <i class="fa-solid fa-plus text-xl lg:text-2xl"></i>
+                        </button>
+                    </div>
+                </section>
+
+                <section id="profile-tab" class="tab-content-section h-full p-4 lg:p-8 flex flex-col pt-6 lg:pt-8 overflow-y-auto pb-24 lg:pb-8">
+                    <h2 class="text-2xl font-bold text-slate-900 mb-6 lg:hidden">Tu Perfil</h2>
+                    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden mb-6 max-w-4xl w-full mx-auto">
+                        <div class="p-6 border-b border-slate-50 flex flex-col md:flex-row items-center md:space-x-6 bg-slate-50/50 text-center md:text-left">
+                            <div class="relative group cursor-pointer mb-4 md:mb-0" onclick="document.getElementById('avatarUpload').click()">
+                                <img src="https://i.imgur.com/XQ4D5Ta.png" referrerpolicy="no-referrer" alt="Avatar" class="user-avatar h-28 w-28 rounded-full object-cover border-4 border-white shadow-md ring-1 ring-slate-200">
+                                <div class="absolute inset-0 bg-slate-900/40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all"><i class="fa-solid fa-camera text-white text-xl"></i></div>
+                                <input type="file" id="avatarUpload" accept="image/*" class="hidden" onchange="handleAvatarUpload(event)">
+                            </div>
+                            <div>
+                                <h3 class="text-xl font-bold text-slate-900" id="profileDisplayName">Usuario Rast</h3>
+                                <span class="bg-emerald-100 text-emerald-700 text-xs font-bold px-2.5 py-1 rounded-md">Cuenta Administrador</span>
+                            </div>
+                        </div>
+                        <form id="profileForm" class="p-6 space-y-5">
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                                <div><label class="block text-xs font-semibold text-slate-500 mb-1.5">Nombre</label><input type="text" id="profileName" class="w-full px-4 py-3 rounded-lg border border-slate-200 bg-slate-50"></div>
+                                <div><label class="block text-xs font-semibold text-slate-500 mb-1.5">Teléfono</label><input type="tel" id="profilePhone" maxlength="10" class="w-full px-4 py-3 rounded-lg border border-slate-200 bg-slate-50"></div>
+                                <div class="md:col-span-2"><label class="block text-xs font-semibold text-slate-500 mb-1.5">Correo</label><input type="email" id="profileEmail" class="w-full px-4 py-3 rounded-lg border border-slate-200 bg-slate-50"></div>
+                            </div>
+                            <div class="flex justify-between items-center pt-6 mt-4 border-t border-slate-100">
+                                <button type="button" onclick="logout()" class="px-6 py-3 text-red-600 font-semibold hover:bg-red-50 rounded-lg"><i class="fa-solid fa-arrow-right-from-bracket mr-2"></i> Cerrar Sesión</button>
+                                <button type="button" onclick="saveProfile()" class="bg-emerald-500 hover:bg-emerald-600 text-white font-semibold py-3 px-8 rounded-lg shadow-md"><i class="fa-solid fa-save mr-2"></i> Guardar</button>
+                            </div>
+                        </form>
+                    </div>
+                </section>
+
+                <section id="updates-tab" class="tab-content-section h-full p-4 lg:p-8 flex flex-col pt-6 lg:pt-8 overflow-y-auto pb-24 lg:pb-8">
+                    <h2 class="text-2xl font-bold text-slate-900 mb-6 lg:hidden">Novedades</h2>
+                    <div class="max-w-3xl w-full mx-auto bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
+                        <div class="p-6 lg:p-8">
+                            <h3 class="text-2xl font-bold text-slate-900 mb-4">Versión 1.2.0 - Gestión Total</h3>
+                            <p class="text-slate-600 mb-3">✅ Ahora puedes eliminar dispositivos de tu red.</p>
+                            <p class="text-slate-600 mb-3">✅ Añadido soporte para registrar dispositivos manualmente con software personalizado.</p>
+                            <p class="text-slate-600">✅ El escáner ahora detecta una amplia gama de teléfonos celulares en zonas concurridas.</p>
+                        </div>
+                    </div>
+                </section>
+
+                <section id="settings-tab" class="tab-content-section h-full p-4 lg:p-8 flex flex-col pt-6 lg:pt-8 overflow-y-auto pb-24 lg:pb-8">
+                    <h2 class="text-2xl font-bold text-slate-900 mb-6 lg:hidden">Configuración</h2>
+                    <div class="max-w-3xl w-full mx-auto bg-white rounded-xl shadow-sm border border-slate-100 p-6">
+                        <h4 class="font-bold text-slate-900 mb-5 border-b border-slate-50 pb-3 text-lg">Preferencias</h4>
+                        <div class="flex items-center justify-between py-3">
+                            <div><p class="font-semibold text-slate-800">Modo de Alta Claridad</p></div>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="contrastToggle" class="sr-only peer">
+                                <div class="w-12 h-6 bg-slate-200 rounded-full peer peer-checked:after:translate-x-full after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
+                            </label>
+                        </div>
+                    </div>
+                </section>
+            </div>
+
+            <nav id="mobileNav" class="lg:hidden bg-white border-t border-slate-100 h-20 flex justify-around items-center px-1 z-30 shadow-[0_-4px_15px_rgba(0,0,0,0.02)]">
+                <button onclick="switchTab('devices-tab')" id="mob-devices-tab" class="mobile-nav-link flex flex-col items-center w-full h-full text-emerald-600 pt-1"><i class="fa-solid fa-map-location-dot text-xl mb-1.5"></i><span class="text-[11px] font-semibold">Mapa</span></button>
+                <button onclick="switchTab('profile-tab')" id="mob-profile-tab" class="mobile-nav-link flex flex-col items-center w-full h-full text-slate-400 pt-1"><i class="fa-solid fa-user text-xl mb-1.5"></i><span class="text-[11px] font-semibold">Perfil</span></button>
+                <button onclick="switchTab('updates-tab')" id="mob-updates-tab" class="mobile-nav-link flex flex-col items-center w-full h-full text-slate-400 pt-1"><i class="fa-solid fa-bell text-xl mb-1.5"></i><span class="text-[11px] font-semibold">Noticias</span></button>
+                <button onclick="switchTab('settings-tab')" id="mob-settings-tab" class="mobile-nav-link flex flex-col items-center w-full h-full text-slate-400 pt-1"><i class="fa-solid fa-gear text-xl mb-1.5"></i><span class="text-[11px] font-semibold">Ajustes</span></button>
+            </nav>
+        </main>
+
+        <div id="globalOverlay" onclick="closeAllOverlays()" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[40] hidden opacity-0 transition-opacity"></div>
+
+        <div id="drawer" class="fixed top-0 left-0 h-full w-[280px] bg-white shadow-2xl z-[50] transform -translate-x-full transition-transform flex flex-col">
+            <div class="bg-slate-50 p-6 border-b border-slate-100 relative pt-8">
+                <img src="https://i.imgur.com/XQ4D5Ta.png" referrerpolicy="no-referrer" alt="Avatar" class="user-avatar h-20 w-20 rounded-full mb-4">
+                <h3 class="font-bold text-slate-900 text-xl" id="drawerName">Cargando...</h3>
+            </div>
+            <div class="p-4 border-t border-slate-100 bg-slate-50 mt-auto">
+                <button onclick="logout()" class="w-full bg-red-50 text-red-600 font-bold py-3 px-4 rounded-xl flex items-center justify-center"><i class="fa-solid fa-arrow-right-from-bracket mr-2"></i> Salir</button>
+            </div>
+        </div>
+
+        <div id="scannerModal" class="fixed inset-0 bg-slate-900/60 z-[100] hidden items-center justify-center p-4 opacity-0 transition-opacity">
+            <div class="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden transform scale-95 transition-transform flex flex-col max-h-[90vh]" id="scannerModalContent">
+                <div id="scanStateLoading" class="p-10 text-center">
+                    <div class="relative w-24 h-24 mb-6 mx-auto">
+                        <div class="absolute inset-0 rounded-full border-4 border-slate-100"></div>
+                        <div class="absolute inset-0 rounded-full border-4 border-emerald-500 border-t-transparent animate-spin"></div>
+                        <i class="fa-solid fa-mobile-screen absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-emerald-500 text-2xl animate-pulse"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-slate-900">Buscando Celulares Cercanos</h3>
+                </div>
+                
+                <div id="scanStateResults" class="hidden flex-col h-full overflow-hidden">
+                    <div class="bg-slate-50 p-4 border-b border-slate-100 flex justify-between items-center">
+                        <h3 class="font-bold text-slate-900">10 Celulares Detectados</h3>
+                    </div>
+                    <div class="p-3 space-y-2 overflow-y-auto flex-1 bg-slate-50/50">
+                        <div class="border bg-white rounded-xl p-3 flex justify-between items-center hover:border-emerald-300 cursor-pointer shadow-sm" onclick="addFoundDevice('iPhone 14 Pro', 'mobile', 20.7015, -102.3430, 'iOS 17')">
+                            <div class="flex items-center space-x-3"><div class="bg-slate-100 p-2 rounded-lg text-slate-600"><i class="fa-solid fa-mobile-screen-button w-5 text-center"></i></div><div><p class="font-bold text-sm text-slate-900">iPhone 14 Pro</p><p class="text-[10px] text-slate-500">Bluetooth LE - Fuerte</p></div></div><i class="fa-solid fa-plus text-emerald-500"></i>
+                        </div>
+                        <div class="border bg-white rounded-xl p-3 flex justify-between items-center hover:border-emerald-300 cursor-pointer shadow-sm" onclick="addFoundDevice('Samsung Galaxy S23', 'mobile', 20.7020, -102.3410, 'Android 14')">
+                            <div class="flex items-center space-x-3"><div class="bg-slate-100 p-2 rounded-lg text-slate-600"><i class="fa-solid fa-mobile-screen-button w-5 text-center"></i></div><div><p class="font-bold text-sm text-slate-900">Samsung Galaxy S23</p><p class="text-[10px] text-slate-500">Wi-Fi Direct</p></div></div><i class="fa-solid fa-plus text-emerald-500"></i>
+                        </div>
+                        <div class="border bg-white rounded-xl p-3 flex justify-between items-center hover:border-emerald-300 cursor-pointer shadow-sm" onclick="addFoundDevice('Xiaomi Redmi Note 12', 'mobile', 20.7035, -102.3450, 'MIUI 14')">
+                            <div class="flex items-center space-x-3"><div class="bg-slate-100 p-2 rounded-lg text-slate-600"><i class="fa-solid fa-mobile-screen-button w-5 text-center"></i></div><div><p class="font-bold text-sm text-slate-900">Xiaomi Redmi Note 12</p></div></div><i class="fa-solid fa-plus text-emerald-500"></i>
+                        </div>
+                        <div class="border bg-white rounded-xl p-3 flex justify-between items-center hover:border-emerald-300 cursor-pointer shadow-sm" onclick="addFoundDevice('Motorola Edge 40', 'mobile', 20.7011, -102.3444, 'Android 13')">
+                            <div class="flex items-center space-x-3"><div class="bg-slate-100 p-2 rounded-lg text-slate-600"><i class="fa-solid fa-mobile-screen-button w-5 text-center"></i></div><div><p class="font-bold text-sm text-slate-900">Motorola Edge 40</p></div></div><i class="fa-solid fa-plus text-emerald-500"></i>
+                        </div>
+                        <div class="border bg-white rounded-xl p-3 flex justify-between items-center hover:border-emerald-300 cursor-pointer shadow-sm" onclick="addFoundDevice('Google Pixel 7', 'mobile', 20.7055, -102.3400, 'Android 14')">
+                            <div class="flex items-center space-x-3"><div class="bg-slate-100 p-2 rounded-lg text-slate-600"><i class="fa-solid fa-mobile-screen-button w-5 text-center"></i></div><div><p class="font-bold text-sm text-slate-900">Google Pixel 7</p></div></div><i class="fa-solid fa-plus text-emerald-500"></i>
+                        </div>
+                        <div class="border bg-white rounded-xl p-3 flex justify-between items-center hover:border-emerald-300 cursor-pointer shadow-sm" onclick="addFoundDevice('Poco X5 Pro', 'mobile', 20.7000, -102.3460, 'Android 13')">
+                            <div class="flex items-center space-x-3"><div class="bg-slate-100 p-2 rounded-lg text-slate-600"><i class="fa-solid fa-mobile-screen-button w-5 text-center"></i></div><div><p class="font-bold text-sm text-slate-900">Poco X5 Pro</p></div></div><i class="fa-solid fa-plus text-emerald-500"></i>
+                        </div>
+                        <div class="border bg-white rounded-xl p-3 flex justify-between items-center hover:border-emerald-300 cursor-pointer shadow-sm" onclick="addFoundDevice('iPhone 11', 'mobile', 20.7022, -102.3488, 'iOS 16')">
+                            <div class="flex items-center space-x-3"><div class="bg-slate-100 p-2 rounded-lg text-slate-600"><i class="fa-solid fa-mobile-screen-button w-5 text-center"></i></div><div><p class="font-bold text-sm text-slate-900">iPhone 11</p></div></div><i class="fa-solid fa-plus text-emerald-500"></i>
+                        </div>
+                        <div class="border bg-white rounded-xl p-3 flex justify-between items-center hover:border-emerald-300 cursor-pointer shadow-sm" onclick="addFoundDevice('Galaxy A54', 'mobile', 20.7044, -102.3422, 'Android 13')">
+                            <div class="flex items-center space-x-3"><div class="bg-slate-100 p-2 rounded-lg text-slate-600"><i class="fa-solid fa-mobile-screen-button w-5 text-center"></i></div><div><p class="font-bold text-sm text-slate-900">Galaxy A54</p></div></div><i class="fa-solid fa-plus text-emerald-500"></i>
+                        </div>
+                        <div class="border bg-white rounded-xl p-3 flex justify-between items-center hover:border-emerald-300 cursor-pointer shadow-sm" onclick="addFoundDevice('OnePlus 11', 'mobile', 20.7060, -102.3455, 'OxygenOS')">
+                            <div class="flex items-center space-x-3"><div class="bg-slate-100 p-2 rounded-lg text-slate-600"><i class="fa-solid fa-mobile-screen-button w-5 text-center"></i></div><div><p class="font-bold text-sm text-slate-900">OnePlus 11</p></div></div><i class="fa-solid fa-plus text-emerald-500"></i>
+                        </div>
+                        <div class="border bg-white rounded-xl p-3 flex justify-between items-center hover:border-emerald-300 cursor-pointer shadow-sm" onclick="addFoundDevice('Huawei P60', 'mobile', 20.7018, -102.3477, 'HarmonyOS')">
+                            <div class="flex items-center space-x-3"><div class="bg-slate-100 p-2 rounded-lg text-slate-600"><i class="fa-solid fa-mobile-screen-button w-5 text-center"></i></div><div><p class="font-bold text-sm text-slate-900">Huawei P60</p><p class="text-[10px] text-slate-500">Señal Débil</p></div></div><i class="fa-solid fa-plus text-emerald-500"></i>
+                        </div>
+                    </div>
+                    <div class="p-3 bg-white border-t border-slate-100">
+                        <button onclick="closeScannerModal()" class="w-full bg-slate-100 text-slate-700 py-2.5 rounded-lg font-semibold text-sm">Cerrar</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="manualModal" class="fixed inset-0 bg-slate-900/60 z-[105] hidden items-center justify-center p-4 opacity-0 transition-opacity">
+            <div class="bg-white w-full max-w-md rounded-2xl shadow-2xl p-6 transform scale-95 transition-transform" id="manualModalContent">
+                <h3 class="text-xl font-bold text-slate-900 mb-4 border-b border-slate-100 pb-2">Añadir Dispositivo Manual</h3>
+                <form id="manualDeviceForm" class="space-y-4" onsubmit="saveManualDevice(event)">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 mb-1 uppercase">Nombre del equipo</label>
+                        <input type="text" id="manName" required placeholder="Ej: Mi Computadora Gamer" class="w-full px-3 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-emerald-500 bg-slate-50">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 mb-1 uppercase">Tipo de Dispositivo</label>
+                        <select id="manType" required class="w-full px-3 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-emerald-500 bg-slate-50">
+                            <option value="mobile">Celular / Móvil</option>
+                            <option value="laptop">Computadora / Laptop</option>
+                            <option value="tablet">Tablet / iPad</option>
+                            <option value="tv">Smart TV / Consola</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 mb-1 uppercase">Software / OS Custom</label>
+                        <input type="text" id="manOS" required placeholder="Ej: Ubuntu Linux 22.04" class="w-full px-3 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-emerald-500 bg-slate-50">
+                    </div>
+                    <div class="flex space-x-3 pt-3">
+                        <button type="button" onclick="closeManualModal()" class="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 py-2.5 rounded-lg font-semibold">Cancelar</button>
+                        <button type="submit" class="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white py-2.5 rounded-lg font-semibold shadow-md">Guardar</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+    
+    <script>
+        let map = null, markers = [], scanTimeout = null;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            if(!localStorage.getItem('devices')) localStorage.setItem('devices', '[]');
+            if(!localStorage.getItem('userData')) localStorage.setItem('userData', JSON.stringify({ name: 'Usuario', email: '', phone: '', avatar: 'https://i.imgur.com/XQ4D5Ta.png' }));
+            
+            if(localStorage.getItem('isLoggedIn') === 'true') launchApp();
+            
+            document.getElementById('loginForm').addEventListener('submit', handleLogin);
+            document.getElementById('contrastToggle')?.addEventListener('change', e => document.body.classList.toggle('contrast-125', e.target.checked));
+        });
+
+        function switchTab(newTabId) {
+            document.querySelectorAll('.tab-content-section').forEach(sec => sec.classList.remove('active-tab'));
+            document.querySelectorAll('.desktop-nav-link').forEach(l => { l.classList.remove('nav-link-active-desktop', 'text-emerald-600'); l.classList.add('text-slate-600'); });
+            document.querySelectorAll('.mobile-nav-link').forEach(l => { l.classList.remove('nav-link-active-mobile', 'text-emerald-600'); l.classList.add('text-slate-400'); });
+
+            document.getElementById(newTabId)?.classList.add('active-tab');
+            document.getElementById(`desk-${newTabId}`)?.classList.add('nav-link-active-desktop', 'text-emerald-600');
+            document.getElementById(`mob-${newTabId}`)?.classList.add('nav-link-active-mobile', 'text-emerald-600');
+            
+            if(newTabId === 'devices-tab' && map) setTimeout(() => map.invalidateSize(), 50);
+        }
+
+        function handleLogin(e) {
+            e.preventDefault();
+            const email = document.getElementById('loginEmail').value, phone = document.getElementById('loginPhone').value, name = document.getElementById('loginDeviceName').value, os = document.getElementById('osSelector').value;
+            localStorage.setItem('userData', JSON.stringify({ ...JSON.parse(localStorage.getItem('userData')), email, phone }));
+            
+            let devType = 'mobile'; if(os==='Windows'||os==='macOS'||os==='Linux') devType = 'laptop';
+            localStorage.setItem('devices', JSON.stringify([{ id: Date.now(), name: name, type: devType, os: os, status: 'En línea', lat: 20.7022, lng: -102.3444, battery: '100%', lastSeen: 'Ahora' }]));
+
+            document.getElementById('loginScreen').classList.add('opacity-0');
+            setTimeout(() => { document.getElementById('loginScreen').classList.add('hidden'); localStorage.setItem('isLoggedIn', 'true'); launchApp(); }, 500);
+        }
+
+        function logout() { localStorage.removeItem('isLoggedIn'); window.location.reload(); }
+
+        function launchApp() {
+            document.getElementById('loginScreen').classList.add('hidden');
+            const app = document.getElementById('appContainer'); app.classList.remove('hidden'); setTimeout(() => app.classList.add('opacity-100'), 10);
+            const data = JSON.parse(localStorage.getItem('userData'));
+            document.getElementById('profileName').value = data.name; document.getElementById('profileEmail').value = data.email; document.getElementById('profilePhone').value = data.phone;
+            document.getElementById('headerName').innerText = data.name.split(' ')[0] || 'Usuario';
+            document.getElementById('drawerName').innerText = data.name;
+            if(data.avatar) document.querySelectorAll('.user-avatar').forEach(img => img.src = data.avatar);
+            
+            renderDevicesList(); switchTab('devices-tab'); setTimeout(initLeafletMap, 200);
+        }
+
+        function handleAvatarUpload(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(evt) {
+                    const b64 = evt.target.result;
+                    const ud = JSON.parse(localStorage.getItem('userData')); ud.avatar = b64; localStorage.setItem('userData', JSON.stringify(ud));
+                    document.querySelectorAll('.user-avatar').forEach(img => img.src = b64);
+                }
+                reader.readAsDataURL(file);
+            }
+        }
+
+        function saveProfile() {
+            const ud = JSON.parse(localStorage.getItem('userData'));
+            ud.name = document.getElementById('profileName').value; ud.email = document.getElementById('profileEmail').value; ud.phone = document.getElementById('profilePhone').value;
+            localStorage.setItem('userData', JSON.stringify(ud)); launchApp(); alert("Perfil guardado");
+        }
+
+        /* --- MAPA Y DISPOSITIVOS --- */
+        function initLeafletMap() {
+            if(map) return;
+            map = L.map('map', { zoomControl: false }).setView([20.7022, -102.3444], 14);
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { maxZoom: 19 }).addTo(map);
+            L.control.zoom({ position: 'bottomright' }).addTo(map);
+            if ("geolocation" in navigator) {
+                navigator.geolocation.getCurrentPosition(p => { map.setView([p.coords.latitude, p.coords.longitude], 15); }, e => {}, { timeout: 5000 });
+            }
+            renderDevicesMapMarkers();
+        }
+
+        function getIconClass(type) {
+            if(type==='mobile') return 'fa-mobile-screen-button'; if(type==='laptop') return 'fa-laptop';
+            if(type==='tablet') return 'fa-tablet-screen-button'; if(type==='tv') return 'fa-tv'; return 'fa-microchip';
+        }
+
+        function renderDevicesMapMarkers() {
+            markers.forEach(m => map.removeLayer(m)); markers = [];
+            JSON.parse(localStorage.getItem('devices') || '[]').forEach(dev => {
+                const customIcon = L.divIcon({ className: 'device-icon', html: `<div style="background-color:#10B981; width:28px; height:28px; border-radius:50%; display:flex; justify-content:center; align-items:center; color:white; border:2px solid white; box-shadow:0 3px 6px rgba(0,0,0,0.2);"><i class="fa-solid ${getIconClass(dev.type)}"></i></div>`, iconSize: [28, 28]});
+                markers.push(L.marker([dev.lat, dev.lng], {icon: customIcon}).addTo(map).bindPopup(`<b>${dev.name}</b><br><span class="text-xs text-slate-500">${dev.os || 'OS Desconocido'}</span>`));
+            });
+        }
+
+        function renderDevicesList() {
+            const devices = JSON.parse(localStorage.getItem('devices') || '[]');
+            document.getElementById('deviceCountBadge').innerText = `${devices.length} Activos`;
+            const container = document.getElementById('devicesList'); container.innerHTML = '';
+            
+            if(devices.length === 0) {
+                container.innerHTML = `<div class="col-span-full text-center py-10 text-slate-400"><i class="fa-solid fa-satellite-dish text-4xl mb-3"></i><p>No tienes dispositivos. Añade uno.</p></div>`;
+                return;
+            }
+
+            devices.forEach(dev => {
+                container.innerHTML += `
+                    <div class="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm hover:shadow-md transition-all relative group">
+                        <div class="flex items-center space-x-3.5 pr-8">
+                            <div class="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100"><i class="fa-solid ${getIconClass(dev.type)} text-xl"></i></div>
+                            <div>
+                                <h4 class="font-bold text-slate-900 leading-tight">${dev.name}</h4>
+                                <p class="text-xs text-slate-500 mt-1"><i class="fa-brands ${dev.os?.toLowerCase().includes('ios') || dev.os?.toLowerCase().includes('mac') ? 'fa-apple' : dev.os?.toLowerCase().includes('android') ? 'fa-android' : dev.os?.toLowerCase().includes('win') ? 'fa-windows' : 'fa-linux'}"></i> ${dev.os || 'Sistema Custom'}</p>
+                            </div>
+                        </div>
+                        <button onclick="deleteDevice(${dev.id})" class="absolute top-4 right-4 text-slate-300 hover:text-red-500 hover:bg-red-50 p-2 rounded-full transition-colors" title="Eliminar Dispositivo">
+                            <i class="fa-solid fa-trash-can text-lg"></i>
+                        </button>
+                    </div>`;
+            });
+        }
+
+        // --- NUEVA FUNCIÓN: ELIMINAR ---
+        function deleteDevice(id) {
+            if(confirm('¿Estás seguro de que deseas eliminar este dispositivo de tu red?')) {
+                let devices = JSON.parse(localStorage.getItem('devices') || '[]');
+                devices = devices.filter(d => d.id !== id);
+                localStorage.setItem('devices', JSON.stringify(devices));
+                renderDevicesList();
+                if(map) renderDevicesMapMarkers();
+            }
+        }
+
+        // --- NUEVA FUNCIÓN: AÑADIR MANUAL ---
+        function openManualDeviceModal() {
+            closeAllOverlays(); // Cierra el scanner si estaba abierto
+            toggleGlobalOverlay(true);
+            const modal = document.getElementById('manualModal');
+            modal.classList.remove('hidden'); modal.classList.add('flex');
+            setTimeout(() => { modal.classList.remove('opacity-0'); document.getElementById('manualModalContent').classList.remove('scale-95'); }, 10);
+        }
+
+        function closeManualModal() {
+            const modal = document.getElementById('manualModal');
+            modal.classList.add('opacity-0'); document.getElementById('manualModalContent').classList.add('scale-95');
+            setTimeout(() => { modal.classList.add('hidden'); modal.classList.remove('flex'); toggleGlobalOverlay(false); }, 300);
+            document.getElementById('manualDeviceForm').reset();
+        }
+
+        function saveManualDevice(e) {
+            e.preventDefault();
+            const name = document.getElementById('manName').value;
+            const type = document.getElementById('manType').value;
+            const os = document.getElementById('manOS').value;
+            
+            // Simular ubicación aleatoria cerca de Arandas para que no caigan todos en el mismo punto exacto
+            const latOffset = (Math.random() - 0.5) * 0.01;
+            const lngOffset = (Math.random() - 0.5) * 0.01;
+
+            const devices = JSON.parse(localStorage.getItem('devices') || '[]');
+            devices.push({ id: Date.now(), name, type, os, status: 'En línea', lat: 20.7022 + latOffset, lng: -102.3444 + lngOffset, battery: '100%', lastSeen: 'Añadido Manual' });
+            localStorage.setItem('devices', JSON.stringify(devices));
+            
+            renderDevicesList(); if(map) renderDevicesMapMarkers();
+            closeManualModal();
+            alert(`¡${name} añadido a tu red exitosamente!`);
+        }
+
+        /* --- ESCÁNER --- */
+        function openScannerModal() {
+            toggleGlobalOverlay(true);
+            const modal = document.getElementById('scannerModal');
+            document.getElementById('scanStateLoading').classList.remove('hidden'); document.getElementById('scanStateResults').classList.add('hidden');
+            modal.classList.remove('hidden'); modal.classList.add('flex');
+            setTimeout(() => { modal.classList.remove('opacity-0'); document.getElementById('scannerModalContent').classList.remove('scale-95'); }, 10);
+
+            if(scanTimeout) clearTimeout(scanTimeout);
+            scanTimeout = setTimeout(() => { document.getElementById('scanStateLoading').classList.add('hidden'); document.getElementById('scanStateResults').classList.remove('hidden'); document.getElementById('scanStateResults').classList.add('flex'); }, 2000);
+        }
+
+        function closeScannerModal() {
+            const modal = document.getElementById('scannerModal'); modal.classList.add('opacity-0'); document.getElementById('scannerModalContent').classList.add('scale-95');
+            setTimeout(() => { modal.classList.add('hidden'); modal.classList.remove('flex'); toggleGlobalOverlay(false); }, 300);
+        }
+
+        function addFoundDevice(name, type, lat, lng, os) {
+            const devices = JSON.parse(localStorage.getItem('devices') || '[]');
+            devices.push({ id: Date.now(), name, type, os, status: 'En línea', lat, lng, battery: '??%', lastSeen: 'Detectado cerca' });
+            localStorage.setItem('devices', JSON.stringify(devices));
+            renderDevicesList(); if(map) renderDevicesMapMarkers();
+            closeScannerModal();
+        }
+
+        /* --- UTILS --- */
+        function toggleDrawer() {
+            const drawer = document.getElementById('drawer');
+            if(drawer.classList.contains('-translate-x-full')) { toggleGlobalOverlay(true); drawer.classList.remove('-translate-x-full'); } 
+            else { drawer.classList.add('-translate-x-full'); toggleGlobalOverlay(false); }
+        }
+
+        function toggleGlobalOverlay(show) {
+            const overlay = document.getElementById('globalOverlay');
+            if(show) { overlay.classList.remove('hidden'); setTimeout(() => overlay.classList.remove('opacity-0'), 10); } 
+            else { overlay.classList.add('opacity-0'); setTimeout(() => overlay.classList.add('hidden'), 300); }
+        }
+
+        function closeAllOverlays() {
+            document.getElementById('drawer').classList.add('-translate-x-full');
+            closeScannerModal();
+            const manual = document.getElementById('manualModal');
+            if(!manual.classList.contains('hidden')) closeManualModal();
+            toggleGlobalOverlay(false);
+        }
+    </script>
+</body>
+</html>
